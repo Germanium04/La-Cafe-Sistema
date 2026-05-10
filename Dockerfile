@@ -97,6 +97,18 @@ RUN composer install --no-dev --optimize-autoloader --no-interaction
 
 RUN composer dump-autoload --optimize
 
+# Temp APP_KEY for build-time artisan commands
+ARG APP_KEY=base64:dGVtcG9yYXJ5a2V5Zm9yYnVpbGRvbmx5MTIzNDU2Nzg=
+ENV APP_KEY=$APP_KEY
+ENV APP_ENV=production
+ENV DB_CONNECTION=pgsql
+
+# Cache Laravel config/routes
+RUN php artisan config:cache \
+    && php artisan route:cache \
+    && php artisan view:cache
+
+
 # Install frontend dependencies and build Vite assets
 
 RUN npm install
