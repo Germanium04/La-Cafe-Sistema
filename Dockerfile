@@ -135,6 +135,7 @@ RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framewor
 
 EXPOSE 10000
 
-
+RUN echo "log_errors = On" >> /usr/local/etc/php/php.ini \
+    && echo "error_log = /dev/stderr" >> /usr/local/etc/php/php.ini
 
 CMD ["apache2-foreground"]
