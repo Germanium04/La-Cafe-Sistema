@@ -97,12 +97,6 @@ RUN composer install --no-dev --optimize-autoloader --no-interaction
 
 RUN composer dump-autoload --optimize
 
-# Cache Laravel config/routes
-RUN php artisan config:cache \
-    && php artisan route:cache \
-    && php artisan view:cache
-
-
 # Install frontend dependencies and build Vite assets
 
 RUN npm install
