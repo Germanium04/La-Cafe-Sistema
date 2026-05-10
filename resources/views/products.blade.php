@@ -48,7 +48,7 @@
             </thead>
             <tbody>
                 @forelse($hotProducts as $product)
-                <tr>
+                <tr class="product-row" onclick="showIngredients({{ $product->product_id }}, '{{ addslashes($product->product_name) }}')" style="cursor:pointer;">
                     <td class="product-name">{{ $product->product_name }}</td>
                     <td class="price-cell">₱{{ number_format($product->base_price, 0) }}</td>
                     <td class="ingredients-list">{{ $product->ingredients ?? '—' }}</td>
@@ -89,7 +89,7 @@
             </thead>
             <tbody>
                 @forelse($coldProducts as $product)
-                <tr>
+                <tr class="product-row" onclick="showIngredients({{ $product->product_id }}, '{{ addslashes($product->product_name) }}')" style="cursor:pointer;">
                     <td class="product-name">{{ $product->product_name }}</td>
                     <td class="price-cell">₱{{ number_format($product->base_price, 0) }}</td>
                     <td class="ingredients-list">{{ $product->ingredients ?? '—' }}</td>
@@ -180,5 +180,49 @@
         background: #fff5f5;
     }
 </style>
+
+{{-- Ingredients Popup Modal --}}
+<div id="ing-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--card); border-radius:var(--radius); padding:28px; max-width:400px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.2); position:relative;">
+        <button onclick="closeModal()" style="position:absolute; top:12px; right:14px; background:none; border:none; font-size:20px; cursor:pointer; color:var(--muted);">&times;</button>
+        <div id="modal-title" style="font-size:16px; font-weight:700; color:var(--text); margin-bottom:4px;"></div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:16px;">Ingredients per cup</div>
+        <div id="modal-body"></div>
+    </div>
+</div>
+
+<script>
+const ingredientsByProduct = @json($ingredientsByProduct);
+
+function showIngredients(productId, productName) {
+    const ingredients = ingredientsByProduct[productId] || [];
+    document.getElementById('modal-title').textContent = productName;
+
+    if (!ingredients.length) {
+        document.getElementById('modal-body').innerHTML = '<p style="color:var(--muted); font-size:13px;">No ingredients recorded.</p>';
+    } else {
+        let html = '';
+        ingredients.forEach(ing => {
+            html += `<div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border); font-size:13.5px;">
+                        <span style="color:var(--text);">${ing.ingredient_name}</span>
+                        <span style="color:var(--muted); font-weight:600;">${ing.quantity_used} ${ing.unit}</span>
+                     </div>`;
+        });
+        document.getElementById('modal-body').innerHTML = html;
+    }
+
+    document.getElementById('ing-modal').style.display = 'flex';
+}
+
+function closeModal() {
+    document.getElementById('ing-modal').style.display = 'none';
+}
+
+document.getElementById('ing-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+</script>
 
 @endsection

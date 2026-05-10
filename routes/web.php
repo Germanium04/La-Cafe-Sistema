@@ -34,7 +34,6 @@ Route::middleware(['staff.auth', 'role:staff'])->group(function () {
     Route::put('/orders/{id}',          [AppController::class, 'ordersUpdate']);
 
     Route::post('/inventory/transaction', [AppController::class, 'inventoryTransaction']);
-    // Route::post('/ingredients',           [AppController::class, 'ingredientsStore']);
 });
 
 // ── ADMIN ONLY (role: admin) ──
@@ -44,8 +43,12 @@ Route::middleware(['staff.auth', 'admin.auth'])->group(function () {
     Route::post('/products',              [AppController::class, 'productsStore']);
     Route::get('/products/{id}/edit',     [AppController::class, 'productsEdit']);
     Route::put('/products/{id}',          [AppController::class, 'productsUpdate']);
-    Route::post('/products/{id}/delete',  [AppController::class, 'productsDelete']); // ← new
+    Route::post('/products/{id}/delete',  [AppController::class, 'productsDelete']);
     Route::post('/ingredients',           [AppController::class, 'ingredientsStore']);
+
+    // Inventory approval workflow
+    Route::post('/inventory/{id}/approve', [AppController::class, 'inventoryApprove']);
+    Route::post('/inventory/{id}/reject',  [AppController::class, 'inventoryReject']);
 
     Route::get('/reports', [AppController::class, 'reports']);
 });

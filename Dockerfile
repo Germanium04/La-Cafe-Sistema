@@ -80,7 +80,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-
+# Ensure public CSS is available
+COPY public/css/app.css /var/www/html/public/css/app.css
 
 WORKDIR /var/www/html
 

@@ -38,6 +38,15 @@
         </div>
     </div>
 
+    {{-- Pending stock transactions notice --}}
+    @if(isset($myPendingTransactions) && $myPendingTransactions > 0)
+    <div class="flash flash-info" style="margin-bottom:16px;">
+        ⏳ You have <strong>{{ $myPendingTransactions }}</strong> stock
+        transaction{{ $myPendingTransactions > 1 ? 's' : '' }} awaiting admin approval.
+        <a href="/inventory" style="font-weight:700; color:inherit; text-decoration:underline;">View →</a>
+    </div>
+    @endif
+
     {{-- MAIN GRID --}}
     <div class="main-grid">
         <div class="left-col">
@@ -77,7 +86,7 @@
 
         <div class="right-col">
 
-            {{-- Low Stock Alerts --}}
+            {{-- Low Stock Alerts — now uses admin-set min_stock --}}
             @if($lowStockAlerts->count() > 0)
             <div class="card">
                 <div class="card-header">
@@ -86,7 +95,7 @@
                 </div>
                 @foreach($lowStockAlerts as $ing)
                 @php
-                    $unitLabel = match($ing->unit) { 'grams' => 'g', 'ml' => 'ml', default => $ing->unit };
+                    $unitLabel = $ing->unit === 'grams' ? 'g' : $ing->unit;
                 @endphp
                 <div class="stock-row">
                     <div class="stock-meta">
@@ -100,6 +109,11 @@
                         </span>
                         <span class="stock-qty stock-qty-warning">
                             {{ number_format($ing->stock_level) }} {{ $unitLabel }}
+                            @if(isset($ing->min_stock) && $ing->min_stock > 0)
+                                <span style="font-size:11px; color:var(--muted);">
+                                    / min {{ number_format($ing->min_stock) }} {{ $unitLabel }}
+                                </span>
+                            @endif
                         </span>
                     </div>
                 </div>

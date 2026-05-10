@@ -84,19 +84,130 @@ class DatabaseSeeder extends Seeder
         //   - Condensed Milk (id 11)
         //   - Barako Coffee (id 12)
         // ---------------------------------------------------------------
-        DB::table('ingredients')->insert([
-            ['ingredient_name' => 'Coffee',                'stock_level' => 10000, 'unit' => 'ml',    'created_at' => now(), 'updated_at' => now()], // id 1
-            ['ingredient_name' => 'Ice',                   'stock_level' => 50000, 'unit' => 'g',     'created_at' => now(), 'updated_at' => now()], // id 2
-            ['ingredient_name' => 'Whole Milk',            'stock_level' => 20000, 'unit' => 'ml',    'created_at' => now(), 'updated_at' => now()], // id 3
-            ['ingredient_name' => 'Caramel Syrup',         'stock_level' => 5000,  'unit' => 'ml',    'created_at' => now(), 'updated_at' => now()], // id 4
-            ['ingredient_name' => 'Matcha Powder',         'stock_level' => 3000,  'unit' => 'g',     'created_at' => now(), 'updated_at' => now()], // id 5
-            ['ingredient_name' => 'Dark Chocolate Powder', 'stock_level' => 3000,  'unit' => 'g',     'created_at' => now(), 'updated_at' => now()], // id 6
-            ['ingredient_name' => 'Strawberry Syrup',      'stock_level' => 5000,  'unit' => 'ml',    'created_at' => now(), 'updated_at' => now()], // id 7
-            ['ingredient_name' => 'Belgian Choco Syrup',   'stock_level' => 5000,  'unit' => 'ml',    'created_at' => now(), 'updated_at' => now()], // id 8
-            ['ingredient_name' => 'Oreo Crumble',          'stock_level' => 5000,  'unit' => 'g',     'created_at' => now(), 'updated_at' => now()], // id 9
-            ['ingredient_name' => 'Condensed Milk',        'stock_level' => 10000, 'unit' => 'ml',    'created_at' => now(), 'updated_at' => now()], // id 10
-            ['ingredient_name' => 'Barako Coffee',         'stock_level' => 3000,  'unit' => 'ml',    'created_at' => now(), 'updated_at' => now()], // id 11
+         DB::table('ingredients')->insert([
+            // id 1
+            [
+                'ingredient_name' => 'Coffee',
+                'stock_level'     => 10000,
+                'unit'            => 'ml',
+                'unit_group'      => 'volume',
+                'min_stock'       => 2000,   // warn below 2 L
+                'max_stock'       => 20000,  // cap at 20 L
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ],
+            // id 2
+            [
+                'ingredient_name' => 'Ice',
+                'stock_level'     => 50000,
+                'unit'            => 'g',
+                'unit_group'      => 'weight',
+                'min_stock'       => 5000,   // warn below 5 kg
+                'max_stock'       => null,   // no upper limit
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ],
+            // id 3
+            [
+                'ingredient_name' => 'Whole Milk',
+                'stock_level'     => 20000,
+                'unit'            => 'ml',
+                'unit_group'      => 'volume',
+                'min_stock'       => 3000,
+                'max_stock'       => 30000,
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ],
+            // id 4
+            [
+                'ingredient_name' => 'Caramel Syrup',
+                'stock_level'     => 5000,
+                'unit'            => 'ml',
+                'unit_group'      => 'volume',
+                'min_stock'       => 500,
+                'max_stock'       => 10000,
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ],
+            // id 5
+            [
+                'ingredient_name' => 'Matcha Powder',
+                'stock_level'     => 3000,
+                'unit'            => 'g',
+                'unit_group'      => 'weight',
+                'min_stock'       => 300,
+                'max_stock'       => 5000,
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ],
+            // id 6
+            [
+                'ingredient_name' => 'Dark Chocolate Powder',
+                'stock_level'     => 3000,
+                'unit'            => 'g',
+                'unit_group'      => 'weight',
+                'min_stock'       => 300,
+                'max_stock'       => 5000,
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ],
+            // id 7
+            [
+                'ingredient_name' => 'Strawberry Syrup',
+                'stock_level'     => 5000,
+                'unit'            => 'ml',
+                'unit_group'      => 'volume',
+                'min_stock'       => 500,
+                'max_stock'       => 10000,
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ],
+            // id 8
+            [
+                'ingredient_name' => 'Belgian Choco Syrup',
+                'stock_level'     => 5000,
+                'unit'            => 'ml',
+                'unit_group'      => 'volume',
+                'min_stock'       => 500,
+                'max_stock'       => 10000,
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ],
+            // id 9
+            [
+                'ingredient_name' => 'Oreo Crumble',
+                'stock_level'     => 5000,
+                'unit'            => 'g',
+                'unit_group'      => 'weight',
+                'min_stock'       => 500,
+                'max_stock'       => null,
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ],
+            // id 10
+            [
+                'ingredient_name' => 'Condensed Milk',
+                'stock_level'     => 5000,
+                'unit'            => 'ml',
+                'unit_group'      => 'volume',
+                'min_stock'       => 500,
+                'max_stock'       => 10000,
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ],
+            // id 11
+            [
+                'ingredient_name' => 'Barako Coffee',
+                'stock_level'     => 3000,
+                'unit'            => 'g',
+                'unit_group'      => 'weight',
+                'min_stock'       => 300,
+                'max_stock'       => 5000,
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ],
         ]);
+ 
 
         // ---------------------------------------------------------------
         // PRODUCT INGREDIENTS

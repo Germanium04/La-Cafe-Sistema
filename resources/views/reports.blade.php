@@ -140,7 +140,8 @@
                     <th>Staff</th>
                     <th>Amount</th>
                     <th>Order Status</th>
-                    <th>Payment</th>
+                    <th>Payment Method</th>
+                    <th>Payment Status</th>
                 </tr>
             </thead>
             <tbody>
@@ -154,6 +155,7 @@
                             {{ $row->status }}
                         </span>
                     </td>
+                    <td class="td-staff">{{ $row->payment_method ?? '—' }}</td>
                     <td>
                         @if($row->payment_status)
                             <span class="pill pill-green">{{ $row->payment_status }}</span>
@@ -164,7 +166,7 @@
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="5" class="td-empty">No orders in this date range.</td>
+                    <td colspan="6" class="td-empty">No orders in this date range.</td>
                 </tr>
                 @endforelse
             </tbody>

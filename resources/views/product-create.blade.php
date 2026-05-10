@@ -89,39 +89,46 @@
                         @endforeach
                     </div>
 
-                    {{-- Add new ingredient inline --}}
-                    <div class="new-ing-section">
-                        <div class="new-ing-heading">+ New ingredient</div>
-                        <div class="new-ing-row">
-                            <div class="new-ing-col-name">
-                                <div class="new-ing-col-label">Name</div>
-                                <input type="text" id="new-ing-name" placeholder="e.g. Chocolate Syrup"
-                                       class="new-ing-input">
-                            </div>
-                            <div class="new-ing-col-unit">
-                                <div class="new-ing-col-label">Unit</div>
-                                <input type="text" id="new-ing-unit" placeholder="ml / grams"
-                                       class="new-ing-input">
-                            </div>
-                            <div class="new-ing-col-stock">
-                                <div class="new-ing-col-label">Stock</div>
-                                <input type="number" id="new-ing-stock" placeholder="0" min="0"
-                                       class="new-ing-input">
-                            </div>
-                            <button type="button" onclick="addIngredient()"
-                                    class="btn btn-add-ing">
-                                Add ↗
-                            </button>
-                        </div>
-                        <div id="new-ing-error" class="new-ing-error"></div>
-                    </div>
-
                     <div class="action-row action-row-mt">
                         <button type="submit" class="btn-place">Add product ↗</button>
                         <a href="/products" class="btn-clear btn-discard">Discard</a>
                     </div>
                 </div>
 
+            </div>
+
+            {{-- Add new ingredient — below the grid --}}
+            <div class="new-ing-section">
+                <div class="new-ing-heading">+ New ingredient</div>
+                <div class="new-ing-row">
+                    <div class="new-ing-col-name">
+                        <div class="new-ing-col-label">Name</div>
+                        <input type="text" id="new-ing-name" placeholder="e.g. Chocolate Syrup" class="new-ing-input">
+                    </div>
+                    <div class="new-ing-col-unit">
+                        <div class="new-ing-col-label">Unit</div>
+                        <select id="new-ing-unit" class="new-ing-input">
+                            <option value="">Select…</option>
+                            <option value="volume">ml / L (volume)</option>
+                            <option value="weight">g / kg (weight)</option>
+                            <option value="piece">pcs (pieces)</option>
+                        </select>
+                    </div>
+                    <div class="new-ing-col-stock">
+                        <div class="new-ing-col-label">Stock</div>
+                        <input type="number" id="new-ing-stock" placeholder="0" min="0" class="new-ing-input">
+                    </div>
+                    <div class="new-ing-col-stock">
+                        <div class="new-ing-col-label">Min stock</div>
+                        <input type="number" id="new-ing-min" placeholder="0" min="0" class="new-ing-input">
+                    </div>
+                    <div class="new-ing-col-stock">
+                        <div class="new-ing-col-label">Max stock</div>
+                        <input type="number" id="new-ing-max" placeholder="0" min="0" class="new-ing-input">
+                    </div>
+                    <button type="button" onclick="addIngredient()" class="btn btn-add-ing">Add ↗</button>
+                </div>
+                <div id="new-ing-error" class="new-ing-error"></div>
             </div>
         </form>
     </div>
@@ -180,6 +187,8 @@
         const name  = document.getElementById('new-ing-name').value.trim();
         const unit  = document.getElementById('new-ing-unit').value.trim();
         const stock = document.getElementById('new-ing-stock').value.trim();
+        const min   = document.getElementById('new-ing-min').value.trim();
+        const max   = document.getElementById('new-ing-max').value.trim();
         const errEl = document.getElementById('new-ing-error');
 
         errEl.style.display = 'none';
@@ -201,7 +210,13 @@
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': '{{ csrf_token() }}'
                 },
-                body: JSON.stringify({ ingredient_name: name, unit, stock_level: stock || 0 })
+                body: JSON.stringify({
+                    ingredient_name: name,
+                    unit_group: unit,
+                    stock_level: stock || 0,
+                    min_stock: min || 0,
+                    max_stock: max || 0
+                })
             });
 
             const data = await res.json();
@@ -243,6 +258,8 @@
             document.getElementById('new-ing-name').value  = '';
             document.getElementById('new-ing-unit').value  = '';
             document.getElementById('new-ing-stock').value = '';
+            document.getElementById('new-ing-min').value   = '';
+            document.getElementById('new-ing-max').value   = '';
 
         } catch (e) {
             errEl.textContent = 'Network error. Please try again.';

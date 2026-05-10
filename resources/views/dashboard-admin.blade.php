@@ -38,6 +38,15 @@
         </div>
     </div>
 
+    {{-- Pending stock approval alert --}}
+    @if(isset($pendingStockCount) && $pendingStockCount > 0)
+    <div class="flash flash-info" style="margin-bottom:16px;">
+        ⏳ <strong>{{ $pendingStockCount }}</strong> stock transaction{{ $pendingStockCount > 1 ? 's' : '' }}
+        awaiting your approval.
+        <a href="/inventory" style="font-weight:700; color:inherit; text-decoration:underline;">Review now →</a>
+    </div>
+    @endif
+
     {{-- MAIN GRID --}}
     <div class="main-grid">
         <div class="left-col">
@@ -131,7 +140,7 @@
                 @endforelse
             </div>
 
-            {{-- Stock Levels --}}
+            {{-- Stock Levels — now uses min_stock for real LOW detection --}}
             <div class="card">
                 <div class="card-header">
                     <span class="card-title">Stock levels</span>
@@ -139,15 +148,27 @@
                 </div>
                 @forelse ($ingredients as $ingredient)
                 @php
-                    $maxStock  = ['Coffee Beans' => 2000, 'Milk' => 10000, 'Berry Syrup' => 2000, 'Matcha Powder' => 1000, 'Sugar' => 5000];
-                    $max       = $maxStock[$ingredient->ingredient_name] ?? max($ingredient->stock_level, 1);
-                    $pct       = min(100, round(($ingredient->stock_level / $max) * 100));
-                    $barClass  = $pct >= 60 ? 'bar-high' : ($pct >= 30 ? 'bar-medium' : 'bar-low');
-                    $unitLabel = match($ingredient->unit) { 'grams' => 'g', 'ml' => 'ml', default => $ingredient->unit };
+                    $minStock  = $ingredient->min_stock ?? 0;
+                    $maxStock  = $ingredient->max_stock ?? max($ingredient->stock_level * 2, 100);
+                    $pct       = $maxStock > 0
+                                    ? min(100, round(($ingredient->stock_level / $maxStock) * 100))
+                                    : 0;
+                    $isOut     = $ingredient->stock_level <= 0;
+                    $isLow     = !$isOut && $minStock > 0 && $ingredient->stock_level <= $minStock;
+                    $barClass  = $isOut  ? 'bar-low'
+                               : ($isLow ? 'bar-medium' : 'bar-high');
+                    $unitLabel = $ingredient->unit === 'grams' ? 'g' : $ingredient->unit;
                 @endphp
                 <div class="stock-row">
                     <div class="stock-meta">
-                        <span class="stock-name">{{ $ingredient->ingredient_name }}</span>
+                        <span class="stock-name">
+                            {{ $ingredient->ingredient_name }}
+                            @if($isOut)
+                                <span class="pill pill-red pill-inline">OUT</span>
+                            @elseif($isLow)
+                                <span class="pill pill-orange pill-inline">LOW</span>
+                            @endif
+                        </span>
                         <span class="stock-qty">{{ number_format($ingredient->stock_level) }} {{ $unitLabel }}</span>
                     </div>
                     <div class="bar-track">

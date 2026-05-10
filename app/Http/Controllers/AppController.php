@@ -121,7 +121,7 @@ class AppController extends Controller
             ');
 
             $ingredients = DB::table('ingredients')
-                ->select('ingredient_name', 'stock_level', 'unit')
+                ->select('ingredient_name', 'stock_level', 'unit', 'min_stock', 'max_stock')
                 ->orderBy('ingredient_id')
                 ->get();
 
@@ -137,10 +137,13 @@ class AppController extends Controller
                 ORDER BY total_revenue DESC
             ");
 
+            $pendingStockCount = DB::table('stock_transactions')->where('status', 'pending')->count();
+
             return view('dashboard-admin', compact(
                 'greeting', 'totalRevenue', 'paidOrdersCount', 'pendingOrdersCount',
                 'productsCount', 'coldProductsCount', 'hotProductsCount', 'staffCount',
-                'recentOrders', 'topProducts', 'ingredients', 'staffActivity'
+                'recentOrders', 'topProducts', 'ingredients', 'staffActivity',
+                'pendingStockCount'
             ));
         }
 
@@ -164,8 +167,8 @@ class AppController extends Controller
             ->count();
 
         $lowStockAlerts = DB::table('ingredients')
-            ->where('stock_level', '<=', 50)
-            ->select('ingredient_name', 'stock_level', 'unit')
+            ->whereColumn('stock_level', '<=', 'min_stock')
+            ->select('ingredient_name', 'stock_level', 'unit', 'min_stock')
             ->orderBy('stock_level')
             ->get();
 
@@ -492,7 +495,18 @@ class AppController extends Controller
             ORDER BY p.product_name
         ");
 
-        return view('products', compact('products'));
+        // Fetch ingredients with quantities per product for the popup
+        $productIngredients = DB::select("
+            SELECT pi.product_id, i.ingredient_name, pi.quantity_used, i.unit
+            FROM product_ingredients pi
+            JOIN ingredients i ON i.ingredient_id = pi.ingredient_id
+            ORDER BY i.ingredient_name
+        ");
+
+        // Group by product_id
+        $ingredientsByProduct = collect($productIngredients)->groupBy('product_id');
+
+        return view('products', compact('products', 'ingredientsByProduct'));
     }
 
     // ─────────────────────────────────────────
@@ -548,21 +562,78 @@ class AppController extends Controller
     public function inventory()
     {
         $ingredients = DB::table('ingredients')
-            ->select('ingredient_id', 'ingredient_name', 'stock_level', 'unit')
+            ->select('ingredient_id', 'ingredient_name', 'stock_level',
+                    'unit', 'unit_group', 'min_stock', 'max_stock')
             ->orderBy('ingredient_name')
             ->get();
-
+    
+        // Full log — all statuses visible to both roles
         $transactions = DB::select('
-            SELECT i.ingredient_name, i.unit,
-                   st.transaction_type, st.quantity, st.transaction_date,
-                   u.name AS staff_name
+            SELECT
+                i.ingredient_name,
+                i.unit                AS base_unit,
+                st.transaction_type,
+                st.quantity           AS base_quantity,
+                st.entered_quantity,
+                st.entered_unit,
+                st.reason,
+                st.notes,
+                st.status,
+                st.rejection_note,
+                st.transaction_date,
+                u.name                AS staff_name,
+                a.name                AS approved_by_name,
+                st.approved_at
             FROM stock_transactions st
             JOIN ingredients i ON i.ingredient_id = st.ingredient_id
             LEFT JOIN users u ON u.id = st.user_id
+            LEFT JOIN users a ON a.id = st.approved_by
             ORDER BY st.transaction_id DESC
         ');
-
-        return view('inventory', compact('ingredients', 'transactions'));
+    
+        // Pending queue — admin sees this as an action list
+        $pendingTransactions = [];
+        if (session('user_role') === 'admin') {
+            $pendingTransactions = DB::select('
+                SELECT
+                    st.transaction_id,
+                    i.ingredient_name,
+                    i.unit            AS base_unit,
+                    st.transaction_type,
+                    st.quantity       AS base_quantity,
+                    st.entered_quantity,
+                    st.entered_unit,
+                    st.reason,
+                    st.notes,
+                    st.transaction_date,
+                    u.name            AS staff_name
+                FROM stock_transactions st
+                JOIN ingredients i ON i.ingredient_id = st.ingredient_id
+                LEFT JOIN users u ON u.id = st.user_id
+                WHERE st.status = "pending"
+                ORDER BY st.transaction_id ASC
+            ');
+        }
+    
+        // Pass conversion map so the blade can build the unit dropdown via JS
+        // Format: { ingredient_id: { unit_group: "weight", units: ["g","kg"] }, ... }
+        $unitMap = [];
+        $conversionGroups = [
+            'weight' => ['g', 'kg'],
+            'volume' => ['ml', 'L'],
+            'piece'  => ['pcs'],
+        ];
+        foreach ($ingredients as $ing) {
+            $unitMap[$ing->ingredient_id] = [
+                'unit_group' => $ing->unit_group,
+                'base_unit'  => $ing->unit,
+                'units'      => $conversionGroups[$ing->unit_group] ?? ['pcs'],
+            ];
+        }
+    
+        return view('inventory', compact(
+            'ingredients', 'transactions', 'pendingTransactions', 'unitMap'
+        ));
     }
 
     // ─────────────────────────────────────────
@@ -570,46 +641,187 @@ class AppController extends Controller
     // ─────────────────────────────────────────
     public function inventoryTransaction(Request $request)
     {
+        // Reason options — validated server-side so they can't be spoofed
+        $inReasons  = ['Restocking', 'Low stock replenishment', 'Initial stock', 'Supplier delivery', 'Correction (undercount)'];
+        $outReasons = ['Spoiled / expired', 'Damaged', 'Wastage', 'Correction (overcount)', 'Used in recipe'];
+        $allReasons = array_merge($inReasons, $outReasons);
+    
         $request->validate([
             'ingredient_id'    => 'required|exists:ingredients,ingredient_id',
             'transaction_type' => 'required|in:IN,OUT',
-            'quantity'         => 'required|integer|min:1',
+            'entered_quantity' => 'required|numeric|min:0.01',
+            'entered_unit'     => 'required|string',
+            'reason'           => 'required|in:' . implode(',', $allReasons),
+            'notes'            => 'nullable|string|max:500',
         ]);
-
+    
         $ingredient = DB::table('ingredients')
             ->where('ingredient_id', $request->ingredient_id)
             ->first();
-
+    
         if (!$ingredient) {
             return redirect('/inventory')->with('error', 'Ingredient not found.');
         }
-
-        if ($request->transaction_type === 'OUT' && $request->quantity > $ingredient->stock_level) {
+    
+        // ── Unit conversion ───────────────────────────────────────────────────────
+        $conversionFactors = [
+            'weight' => ['g' => 1, 'kg' => 1000],
+            'volume' => ['ml' => 1, 'L'  => 1000],
+            'piece'  => ['pcs' => 1],
+        ];
+    
+        $group   = $ingredient->unit_group;
+        $factors = $conversionFactors[$group] ?? ['pcs' => 1];
+    
+        // Reject if staff submitted a unit not in this ingredient's group
+        if (!isset($factors[$request->entered_unit])) {
             return redirect('/inventory')->with('error',
-                'Cannot stock OUT more than the current level (' . $ingredient->stock_level . ').');
+                "Invalid unit '{$request->entered_unit}' for this ingredient.");
+        }
+    
+        $factor       = $factors[$request->entered_unit];
+        $baseQuantity = (int) round($request->entered_quantity * $factor);
+    
+        // ── Soft stock check for OUT (against current level) ─────────────────────
+        // Full enforcement happens on approval, but warn staff early
+        if ($request->transaction_type === 'OUT' && $baseQuantity > $ingredient->stock_level) {
+            return redirect('/inventory')->with('error',
+                "Cannot stock OUT {$baseQuantity} {$ingredient->unit} — " .
+                "only {$ingredient->stock_level} {$ingredient->unit} available.");
         }
 
-        $newLevel = $request->transaction_type === 'IN'
-            ? $ingredient->stock_level + $request->quantity
-            : $ingredient->stock_level - $request->quantity;
-
-        DB::table('ingredients')
-            ->where('ingredient_id', $request->ingredient_id)
-            ->update(['stock_level' => $newLevel, 'updated_at' => now()]);
-
+        // ── Max stock check for IN ────────────────────────────────────────────────
+        if ($request->transaction_type === 'IN' && $ingredient->max_stock) {
+            $projectedLevel = $ingredient->stock_level + $baseQuantity;
+            if ($projectedLevel > $ingredient->max_stock) {
+                $canAdd = $ingredient->max_stock - $ingredient->stock_level;
+                return redirect('/inventory')->with('error',
+                    "Cannot stock IN {$baseQuantity} {$ingredient->unit} — " .
+                    "would exceed max stock of {$ingredient->max_stock} {$ingredient->unit}. " .
+                    "You can only add up to {$canAdd} {$ingredient->unit}.");
+            }
+        }
+    
+        // ── Insert as PENDING — stock_level NOT touched yet ───────────────────────
         DB::table('stock_transactions')->insert([
             'ingredient_id'    => $request->ingredient_id,
             'user_id'          => session('user_id'),
             'transaction_type' => $request->transaction_type,
-            'quantity'         => $request->quantity,
+            'quantity'         => $baseQuantity,          // converted base value
+            'entered_quantity' => $request->entered_quantity,
+            'entered_unit'     => $request->entered_unit,
+            'reason'           => $request->reason,
+            'notes'            => $request->notes,
+            'status'           => 'pending',
+            'approved_by'      => null,
+            'approved_at'      => null,
+            'rejection_note'   => null,
             'transaction_date' => now(),
             'created_at'       => now(),
             'updated_at'       => now(),
         ]);
-
-        $label = $request->transaction_type === 'IN' ? 'stocked in' : 'stocked out';
+    
+        $displayQty = $request->entered_quantity . ' ' . $request->entered_unit;
         return redirect('/inventory')->with('success',
-            "Successfully {$label} {$request->quantity} units.");
+            "Transaction submitted ({$displayQty}) — awaiting admin approval.");
+    }
+
+    public function inventoryApprove(Request $request, int $id)
+    {
+        if (session('user_role') !== 'admin') {
+            return redirect('/inventory')->with('error', 'Unauthorized.');
+        }
+    
+        $tx = DB::table('stock_transactions')->where('transaction_id', $id)->first();
+    
+        if (!$tx || $tx->status !== 'pending') {
+            return redirect('/inventory')->with('error', 'Transaction not found or already actioned.');
+        }
+    
+        // Re-check stock for OUT transactions at approval time
+        if ($tx->transaction_type === 'OUT') {
+            $ingredient = DB::table('ingredients')->where('ingredient_id', $tx->ingredient_id)->first();
+            if ($tx->quantity > $ingredient->stock_level) {
+                return redirect('/inventory')->with('error',
+                    "Cannot approve — stock level is now only {$ingredient->stock_level} {$ingredient->unit}.");
+            }
+        }
+
+        // Re-check max stock for IN transactions at approval time
+        if ($tx->transaction_type === 'IN') {
+            $ingredient = DB::table('ingredients')->where('ingredient_id', $tx->ingredient_id)->first();
+            if ($ingredient->max_stock && ($ingredient->stock_level + $tx->quantity) > $ingredient->max_stock) {
+                return redirect('/inventory')->with('error',
+                    "Cannot approve — adding {$tx->quantity} {$ingredient->unit} would exceed max stock of {$ingredient->max_stock} {$ingredient->unit}.");
+            }
+        }
+    
+        DB::beginTransaction();
+        try {
+            // Apply stock change
+            if ($tx->transaction_type === 'IN') {
+                DB::statement('
+                    UPDATE ingredients
+                    SET stock_level = stock_level + ?, updated_at = NOW()
+                    WHERE ingredient_id = ?
+                ', [$tx->quantity, $tx->ingredient_id]);
+            } else {
+                DB::statement('
+                    UPDATE ingredients
+                    SET stock_level = GREATEST(stock_level - ?, 0), updated_at = NOW()
+                    WHERE ingredient_id = ?
+                ', [$tx->quantity, $tx->ingredient_id]);
+            }
+    
+            // Mark approved
+            DB::table('stock_transactions')
+                ->where('transaction_id', $id)
+                ->update([
+                    'status'      => 'approved',
+                    'approved_by' => session('user_id'),
+                    'approved_at' => now(),
+                    'updated_at'  => now(),
+                ]);
+    
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return redirect('/inventory')->with('error', 'Approval failed: ' . $e->getMessage());
+        }
+    
+        return redirect('/inventory')->with('success', 'Transaction #' . $id . ' approved.');
+    }
+    
+    // ─────────────────────────────────────────
+    //  INVENTORY — REJECT  (admin only)
+    // ─────────────────────────────────────────
+    public function inventoryReject(Request $request, int $id)
+    {
+        if (session('user_role') !== 'admin') {
+            return redirect('/inventory')->with('error', 'Unauthorized.');
+        }
+    
+        $request->validate([
+            'rejection_note' => 'nullable|string|max:500',
+        ]);
+    
+        $tx = DB::table('stock_transactions')->where('transaction_id', $id)->first();
+    
+        if (!$tx || $tx->status !== 'pending') {
+            return redirect('/inventory')->with('error', 'Transaction not found or already actioned.');
+        }
+    
+        DB::table('stock_transactions')
+            ->where('transaction_id', $id)
+            ->update([
+                'status'         => 'rejected',
+                'approved_by'    => session('user_id'),
+                'approved_at'    => now(),
+                'rejection_note' => $request->rejection_note,
+                'updated_at'     => now(),
+            ]);
+    
+        return redirect('/inventory')->with('success', 'Transaction #' . $id . ' rejected.');
     }
 
     // ─────────────────────────────────────────
@@ -619,22 +831,35 @@ class AppController extends Controller
     {
         $request->validate([
             'ingredient_name' => 'required|string|max:255',
-            'unit'            => 'required|string|max:50',
+            'unit_group'      => 'required|in:weight,volume,piece',
             'stock_level'     => 'nullable|integer|min:0',
+            'min_stock'       => 'nullable|integer|min:0',
+            'max_stock'       => 'nullable|integer|min:0',
         ]);
-
+    
+        // Derive the base unit from the group
+        $baseUnit = match($request->unit_group) {
+            'weight' => 'g',
+            'volume' => 'ml',
+            'piece'  => 'pcs',
+        };
+    
         $ingredientId = DB::table('ingredients')->insertGetId([
             'ingredient_name' => $request->ingredient_name,
-            'unit'            => $request->unit,
+            'unit'            => $baseUnit,
+            'unit_group'      => $request->unit_group,
             'stock_level'     => $request->stock_level ?? 0,
+            'min_stock'       => $request->min_stock ?? 0,
+            'max_stock'       => $request->max_stock ?: null,
             'created_at'      => now(),
             'updated_at'      => now(),
         ]);
-
+    
         return response()->json([
             'ingredient_id'   => $ingredientId,
             'ingredient_name' => $request->ingredient_name,
-            'unit'            => $request->unit,
+            'unit'            => $baseUnit,
+            'unit_group'      => $request->unit_group,
         ]);
     }
 
