@@ -13,6 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         // inline role check — no separate file needed
         $middleware->alias([
+            'StaffAuth'  => \App\Http\Middleware\StaffAuth::class,
             'staff.auth' => \App\Http\Middleware\StaffAuth::class,
             'admin.auth' => \App\Http\Middleware\AdminAuth::class,
             'role'       => \App\Http\Middleware\RoleAuth::class,
